@@ -602,14 +602,25 @@ function updateLeverageSlider(c: number, l: number = 1) {
   const slider = $("leverage-slider") as HTMLInputElement;
   const numIn  = $("leverage-input")  as HTMLInputElement;
   const maxLev = Math.floor(maxLeverageFor(c, l, minHF()) * 10) / 10; // floor to 1 decimal
+  // If lFactor is 0 the pool marks the asset collateral-only; maxLev collapses to 1.0
+  // and the slider would have min == max, appearing stuck. Disable it and surface a notice.
+  const leverageable = maxLev > 1.0;
   slider.min = numIn.min = "1.0";
-  slider.max = numIn.max = String(maxLev);
+  slider.max = numIn.max = String(leverageable ? maxLev : 1.0);
   slider.step = numIn.step = "0.1";
+  slider.disabled = numIn.disabled = !leverageable;
   const cur = parseFloat(slider.value);
-  const clamped = Math.min(maxLev, Math.max(1.0, cur));
+  const clamped = Math.min(parseFloat(slider.max), Math.max(1.0, cur));
   if (clamped !== cur) { slider.value = String(clamped); numIn.value = String(clamped); }
   // Gradient track (#9)
-  slider.style.background = `linear-gradient(90deg, var(--success) 0%, var(--primary) 33%, var(--warning) 66%, var(--danger) 100%)`;
+  slider.style.background = leverageable
+    ? `linear-gradient(90deg, var(--success) 0%, var(--primary) 33%, var(--warning) 66%, var(--danger) 100%)`
+    : `var(--surface-2)`;
+  const notice = document.getElementById("non-borrowable-notice");
+  if (notice) {
+    notice.classList.toggle("hidden", leverageable);
+    notice.textContent = `⚠ ${selectedAsset.symbol} is collateral-only on this pool — looping requires a borrowable asset.`;
+  }
 }
 
 function buildAssetTabs() {
@@ -728,7 +739,7 @@ function renderApyChart(rs: ReserveStats | undefined, currentLev: number, equity
     <circle cx="${dotCx}" cy="${dotCy}" r="4" class="apy-chart-dot"/>
     <text x="${padL - 2}" y="${padT + 8}" text-anchor="end" class="apy-chart-label">${fmt(maxApy, 0)}%</text>
     <text x="${padL - 2}" y="${H - padB + 2}" text-anchor="end" class="apy-chart-label">${fmt(minApy, 0)}%</text>
-    <text x="${labelX}" y="${labelY}" text-anchor="middle" class="apy-chart-label apy-chart-cur">${fmt(curApy, 1)}%</text>
+    <text x="${labelX}" y="${labelY}" text-anchor="middle" class="apy-chart-label apy-chart-cur">${fmt(curApy, 2)}%</text>
   </svg>`;
 }
 
@@ -832,7 +843,7 @@ function renderPortfolioSummary() {
       <span class="portfolio-card-symbol">${pos.asset.symbol}</span>
       <span class="portfolio-card-details">
         <span>${fmt(pos.equity, 2)} equity \u00B7 ${fmt(pos.leverage, 1)}\u00D7</span>
-        <span>APY ${netApy >= 0 ? "+" : ""}${fmt(netApy, 1)}% \u00B7 HF ${fmt(pos.hf, 2)}</span>
+        <span>APY ${netApy >= 0 ? "+" : ""}${fmt(netApy, 2)}% \u00B7 HF ${fmt(pos.hf, 2)}</span>
       </span>`;
     card.addEventListener("click", () => {
       const asset = assets.find(a => a.id === assetId);
@@ -981,7 +992,7 @@ function renderPosition() {
     netAprEl.textContent = `${apyIcon} ${netApy >= 0 ? "+" : ""}${fmt(netApy, 2)}%`;
     netAprEl.className   = `metric-value ${netApy > 0 ? "hf-ok" : "hf-bad"}`;
     // Hero APY
-    heroApyEl.textContent = `${netApy >= 0 ? "+" : ""}${fmt(netApy, 1)}%`;
+    heroApyEl.textContent = `${netApy >= 0 ? "+" : ""}${fmt(netApy, 2)}%`;
     heroApyEl.className   = `metric-hero-value ${netApy > 0 ? "hf-ok" : "hf-bad"}`;
     // Tooltips with actual APR
     const aprTip = `Approximate APY — Blend interest does not auto-compound. Actual net APR: ${fmt(posNetApr, 2)}%`;
@@ -2367,7 +2378,7 @@ function renderOverview(blendPos: OverviewBlendPosition[], vaultPos: OverviewVau
         <td class="text-right">${fmt(bp.pos.equity, 2)} ${bp.asset.symbol}</td>
         <td class="text-right">${fmt(bp.pos.leverage, 1)}&times;</td>
         <td class="text-right ${hfColor}">${isFinite(bp.pos.hf) ? fmt(bp.pos.hf, 3) : "\u221E"}</td>
-        <td class="text-right ${netApy > 0 ? "hf-ok" : "hf-bad"}" title="${batchTip}">${netApy >= 0 ? "+" : ""}${fmt(netApy, 1)}%</td>
+        <td class="text-right ${netApy > 0 ? "hf-ok" : "hf-bad"}" title="${batchTip}">${netApy >= 0 ? "+" : ""}${fmt(netApy, 2)}%</td>
         <td class="text-right">${fmt(bp.pos.debt, 2)} ${bp.asset.symbol}</td>
       </tr>`;
     }
@@ -2506,7 +2517,7 @@ async function refreshVaultView() {
     const apyEl = $("vault-apy");
     if (stats.netApy !== null) {
       const vaultApy = aprToApy(stats.netApy);
-      apyEl.textContent = (vaultApy >= 0 ? "+" : "") + vaultApy.toFixed(1) + "%";
+      apyEl.textContent = (vaultApy >= 0 ? "+" : "") + vaultApy.toFixed(2) + "%";
       apyEl.className = "stat-value mono " + (vaultApy > 0 ? "hf-ok" : "hf-bad");
       const vaultTip = $("vault-apy-tip");
       if (vaultTip) vaultTip.setAttribute("data-tip",
